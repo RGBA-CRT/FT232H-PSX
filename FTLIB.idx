@@ -1,0 +1,11 @@
+' インデックス プログラム
+
+#strict
+
+'Win32APIの定義ファイル
+
+'プロジェクト内のプログラム ファイル
+#include "..\FT232HLib.sbp"
+#include "..\D2XX.sbp"
+#include "..\MCP23017_Lib.sbp"
+#include "PSX.abp"

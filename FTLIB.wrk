@@ -1,0 +1,11 @@
+case4
+
+text,"..\MCP23017_Lib.sbp",0,0,0,0
+text,"..\FT232HLib.sbp",0,15,551,551
+text,"PSX.abp",0,0,916,916
+text,"FTLIB.abp",0,0,859,859
+
+0
+1
+1
+0,0,0,0,0

@@ -1,0 +1,233 @@
+Dim PSX_KEY_NAME_COMMON[16]=["SELECT","LStic","RStick","START","ª","¨","«","©","L2","R2","L1","R1","¢","›","~"," ",] AS BytePtr
+
+Type PSX_PAD_DATA
+	PadID AS Byte
+	MagicNum AS Byte
+	CommonKeys AS Word
+	etc[3] AS Byte
+End Type
+
+
+
+Enum PSX_ACCESS_MEMORY_CARD_ERRORS
+	PRMC_OK
+	PRMC_NO_CARD
+	PRMC_DATA_TRANSFER_ERROR
+	PRMC_CHECKSUM_ERROR
+End Enum
+
+Const PSX_CMD_MEM_READ =&H52
+Const PSX_CMD_MEM_WRITE=&H57
+
+Class FT232H_PS1_PORT
+Private
+	ft AS *FT232H
+	cs_pin[1] AS Byte
+
+Public
+	PSX_MEM_NUM_BLOCKS As Long'= 16
+	PSX_MEM_NUM_FRAMES As Long '= 64
+	PSX_MEM_FRAME_SIZE As Long '= 128
+
+	Sub FT232H_PS1_PORT(ft_cls AS *FT232H,cs1 AS Byte,cs2 AS Byte)
+		ft=ft_cls
+		cs_pin[0]=cs1
+		cs_pin[1]=cs2
+
+		ft->spi->init(0.06,0,TRUE,TRUE)'0.03
+		ft->spi->setIOCommands(LSB_POSITIVE_EDGE_BYTES_IN,LSB_POSITIVE_EDGE_BYTES_OUT,LSB_POSITIVE_IO)
+		ft->gpio->setADBus(&HFF)
+		ft->sendCommands()
+			
+		PSX_MEM_NUM_BLOCKS = 16
+		PSX_MEM_NUM_FRAMES = 64
+		PSX_MEM_FRAME_SIZE = 128
+	End Sub
+
+	Function getPadBin(num As Long,buf As BytePtr) AS BOOL
+		ft->spi->DeviceEnable(cs_pin[num],TRUE)
+		ft->sendCommands()
+		ft->spi->sendByte(&h01)
+		ft->spi->rwData(ex"\x42",1)
+		ft->spi->reciveRequest(7)
+		ft->spi->DeviceEnable(cs_pin[num],FALSE)
+		ft->sendCommands()
+		ft->reciveData(buf,8)
+	End Function
+
+	Function getPadData(num AS Long,pad_data As *PSX_PAD_DATA) AS BOOL
+		getPadData = getPadBin(num,pad_data AS BytePtr)
+	End Function
+
+	Sub printPadData(pad AS *PSX_PAD_DATA)
+		if pad->MagicNum <> &H5A Then print "invalid data.":ExitSub
+
+		Dim padStr AS BytePtr
+		Select Case pad->PadID
+			Case &H41
+				padStr="SCPH-1010 Digital"
+			Case &H53
+				padStr="SCPH-1110 Analog "
+			Case &H73
+				padStr="SCPH-1150 Analog "
+			Case Else
+				padStr="Unknown"
+		End Select
+
+		printf(ex"PSX Pad Data\n ID : [%02X]%s\n",pad->PadID,padStr)
+		ConsoleClearCurrentLine()
+		printf(ex" Key : [%04X] ",pad->CommonKeys)
+
+		Dim i aS Long
+		For i=0 To 15
+			if ((pad->CommonKeys>>i) And 01) = 0 Then
+				printf("%s ",PSX_KEY_NAME_COMMON[i])
+			End If
+		Next i
+		Print 
+
+		if (pad->PadID And &H0F) = &H03 Then
+			printf(ex" Analog : L-X[%02X] L-Y[%02X] R-X[%02X] R-Y[%02X]",pad->etc[2],pad->etc[3],pad->etc[0],pad->etc[1])
+		Else
+			ConsoleClearCurrentLine()
+		End If
+
+		Print
+
+	End Sub
+
+	Function isMemoryInserted(portNum AS Long) AS BOOL
+		ft->spi->DeviceEnable(cs_pin[portNum],TRUE)
+		ft->sendCommands()
+
+		isMemoryInserted = startMemoryAccess(PSX_CMD_MEM_READ)
+
+		ft->spi->DeviceEnable(cs_pin[portNum],FALSE)
+		ft->sendCommands()
+
+	End Function
+
+	Function startMemoryAccess(mode AS Byte) AS BOOL
+		Dim mc_ret[2] AS Byte
+		'Send read command
+		ft->spi->sendByteImmediate(&H81)
+	'	Sleep(1)
+		ft->spi->sendByteImmediate(mode)
+		ft->spi->reciveRequestImmediate(mc_ret,2)
+
+		'Check return message from MemCard
+		if lstrcmp("Z]",mc_ret)<>0 Then
+			startMemoryAccess=FALSE
+		Else
+			startMemoryAccess=TRUE
+		End If
+	End Function
+
+	Function writeMemBlock(portNum AS Long,Address AS Word, buf AS BytePtr) AS PSX_ACCESS_MEMORY_CARD_ERRORS
+		Dim mc_ret[2] AS Byte
+
+		ft->spi->DeviceEnable(cs_pin[portNum],TRUE)
+		ft->sendCommands()
+
+		'Send read command
+		if startMemoryAccess(PSX_CMD_MEM_WRITE) = FALSE Then
+			writeMemBlock=PRMC_NO_CARD
+			Goto *FTPSX_WMB_EXIT
+		Endif
+
+		'Set Address
+		ft->spi->sendByte(Address>>8 And &HFF)
+		ft->spi->sendByte(Address And &HFF)
+		ft->sendCommands()
+
+		'Send write data
+		ft->spi->sendData(buf,PSX_MEM_FRAME_SIZE)
+		ft->spi->sendByte(calcXOR(Address,buf))
+		ft->sendCommands()
+
+		'responce
+		ft->spi->reciveRequest(1)
+		ft->sendCommands()
+		ft->reciveData(mc_ret,1)
+
+		ft->spi->reciveRequest(1)
+		ft->sendCommands()
+		ft->reciveData(mc_ret+1,1)
+
+		if lstrcmp("\]",mc_ret)<>0 Then
+			writeMemBlock=PRMC_DATA_TRANSFER_ERROR
+			printf(ex"mc ret=  %c %c\n",mc_ret[0],mc_ret[2])
+			Goto *FTPSX_WMB_EXIT
+		End If
+
+		writeMemBlock=PRMC_OK
+*FTPSX_WMB_EXIT
+		ft->spi->DeviceEnable(cs_pin[portNum],FALSE)
+		ft->sendCommands()
+		Sleep(10)
+	End Function
+
+	Function readMemBlock(portNum AS Long,Address AS Word, buf AS BytePtr) AS PSX_ACCESS_MEMORY_CARD_ERRORS
+		Dim mc_ret[2] AS Byte
+
+		ft->spi->DeviceEnable(cs_pin[portNum],TRUE)
+		ft->sendCommands()
+
+		'Send read command
+		if startMemoryAccess(PSX_CMD_MEM_READ) = FALSE Then
+			readMemBlock=PRMC_NO_CARD
+			Goto *FTPSX_RMB_EXIT
+		Endif
+
+		'Set Address
+		ft->spi->sendByte(Address>>8 And &HFF)
+		ft->spi->sendByte(Address And &HFF)
+
+		'responce
+		ft->spi->reciveRequest(1)
+		ft->sendCommands()
+		ft->reciveData(mc_ret,1)
+	'	Sleep(1)
+
+		ft->spi->reciveRequest(1)
+		ft->sendCommands()
+		ft->reciveData(mc_ret+1,1)
+		if lstrcmp("\]",mc_ret)<>0 Then
+			readMemBlock=PRMC_DATA_TRANSFER_ERROR
+			Goto *FTPSX_RMB_EXIT
+		End If
+		ft->spi->reciveRequest(2)
+	'	Sleep(1)
+		ft->sendCommands()
+		ft->reciveData(mc_ret,2) '‚±‚±‚ÉƒAƒhƒŒƒX‚ªŠi”[‚³‚ê‚é‚Í‚¸‚¾‚¯‚Ç–³Ž‹
+
+		'read memcard data
+		ft->spi->reciveRequest(PSX_MEM_FRAME_SIZE)
+		ft->sendCommands()
+		ft->reciveData(buf,128)
+
+		'checksum
+		ft->spi->reciveRequestImmediate(mc_ret,2)
+		if calcXOR(Address,buf) <> mc_ret[0] Then 
+			readMemBlock=PRMC_CHECKSUM_ERROR
+			Goto *FTPSX_RMB_EXIT
+		End If
+		buf[128]=mc_ret[0]
+			
+		readMemBlock=PRMC_OK
+*FTPSX_RMB_EXIT
+		ft->spi->DeviceEnable(cs_pin[portNum],FALSE)
+		ft->sendCommands()
+	'	printf(ex"ADDRESS:%04X - XOR:%02X\n",Address,mc_ret[0])
+	End Function
+
+	Function calcXOR(Address AS Word,data AS BytePtr) AS BytePtr
+		Dim i AS Long
+		calcXOR=Address >> 8
+		calcXOR = calcXOR xor (Address And &HFF)
+		For i=0 To 127
+			calcXOR = calcXOR xor data[i]
+		Next i	
+
+	End Function
+End Class

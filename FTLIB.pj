@@ -1,0 +1,26 @@
+' ActiveBasic Project file.
+
+#VERSION=9
+
+#MODULETYPE=0
+
+#NAME=FTLIB
+
+#PLATFORM=32
+
+#USEWINDOW=0
+
+#OPTION=&H00010000
+
+#OUTPUT_RELEASE=.\FT232H_PSX.exe
+
+#OUTPUT_DEBUG=.\FTLIB_debug.exe
+
+#RESOURCE=0
+
+#SOURCE
+FTLIB.abp
+..\FT232HLib.sbp
+..\D2XX.sbp
+..\MCP23017_Lib.sbp
+PSX.abp

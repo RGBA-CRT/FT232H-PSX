@@ -1,0 +1,179 @@
+#include "FTLIB.idx"
+#console
+#include <RGBALib.sbp>
+
+Print "PSX PAD MEMORY CARD READER WITH FT232H v2017.4.5 - RGBA_CRT 2017"
+Dim ft AS *FT232H
+
+'Block3FF ‚Å‘‚«ž‚ÝŽÀŒ±
+
+ft=new FT232H()
+ft->listupDeviceToConsole()
+
+Dim ftID As Long
+input "Select device >",ftID
+
+if ft->openDevice(ftID)=FALSE Then Print "OpenError" : End
+Print ex"OK.\n"
+
+Locate 0,4
+ConsoleClearCurrentLine()
+Print "Select:"
+Print " 0.View MemCard State"
+Print " 1.View GamePad State"
+Print " 2.Dump MemCard"
+Print " 3.Write Memcard"
+
+Dim mode AS Long,inStr AS String
+Do
+	Locate 0,9
+	ConsoleClearCurrentLine()
+	Input ">",mode
+	Select Case mode
+		Case 1
+			padView()
+
+		Case 2
+			Input ex"Input FileName > ",inStr
+			dumpMemory(inStr)
+
+		Case 3
+			Input ex"Input ImageFileName > ",inStr
+			writeMemFull(inStr)
+						
+		Case Else
+			memStatus()
+			
+	End Select
+Loop
+
+Const CS1_PIN=3 '‰ºˆÊ‚©‚ç 0, 1, 2, 3”Ô–Ú‚Ìƒsƒ“
+Const CS2_PIN=4
+
+
+Sub writeMemTest()
+	Dim buf[129] AS Byte,i AS Long,pdata As *PSX_PAD_DATA
+	Dim pad AS *FT232H_PS1_PORT,out AS File
+	pad=new FT232H_PS1_PORT(ft,CS1_PIN,CS2_PIN)
+
+	memStatus(pad)
+
+	Dim Adr AS Word
+	Adr=1023
+
+	if pad->readMemBlock(0,Adr,buf)=PRMC_NO_CARD Then Print "Card not inserted."
+	Dump(buf,128+4)
+
+	buf[0]++
+
+	Dim ret As Long
+	ret=pad->writeMemBlock(0,Adr,buf)
+	if ret<>PRMC_OK Then
+		Print "Write Error!!!!!!!!!!!!!!! : ";ret
+	Endif
+
+	if pad->readMemBlock(0,Adr,buf)=PRMC_NO_CARD Then Print "Card not inserted."
+	Dump(buf,128+4)
+
+	printf(ex"\nsum = %02X\n",pad->calcXOR(Adr,buf))
+End Sub
+
+Sub writeMemFull(path AS BytePtr)
+	Dim in AS File,buf[128] AS Byte
+	Dim pad AS *FT232H_PS1_PORT,out AS File
+	pad=new FT232H_PS1_PORT(ft,CS1_PIN,CS2_PIN)
+	if in.openFile(path,GENERIC_READ)=FALSE Then
+		Print "OpenFile Error"
+		ExitSub
+	End If
+
+	Dim i AS Long,e AS Long
+	For i = 0 To pad->PSX_MEM_NUM_BLOCKS*pad->PSX_MEM_NUM_FRAMES-1
+		printf("[WRITE]Address : %04X  progress : %d%%  ErrorCount : %d",i,(i/(pad->PSX_MEM_NUM_BLOCKS*pad->PSX_MEM_NUM_FRAMES)*100) AS DWord,e)
+		ConsoleReturnLine()
+		in.read(buf,128)
+		if pad->writeMemBlock(0,i,buf) <> PRMC_OK Then e++ : i-- : Continue
+	Next i
+	Print "WRITE OK."
+End Sub
+
+Sub dumpMemory(path AS BytePtr)
+	Dim buf[129] AS Byte,i AS Long,pdata As *PSX_PAD_DATA
+	Dim pad AS *FT232H_PS1_PORT,out AS File
+	pad=new FT232H_PS1_PORT(ft,CS1_PIN,CS2_PIN)
+	pdata=calloc(sizeof(PSX_PAD_DATA)+19)
+	out.openFile(path,GENERIC_WRITE)
+
+	'Print pad->readMemBlock(0,&H0382,buf)
+	Dim adr AS DWord,e AS Long
+	For adr = 0 To pad->PSX_MEM_NUM_BLOCKS*pad->PSX_MEM_NUM_FRAMES-1
+		printf("[READ]Address : %04X  progress : %d%%  ErrorCount : %d",adr,(adr/(pad->PSX_MEM_NUM_BLOCKS*pad->PSX_MEM_NUM_FRAMES)*100) AS DWord,e)
+		ConsoleReturnLine()
+		if pad->readMemBlock(0,adr,buf) <> PRMC_OK Then e++ : adr-- : Continue
+		out.write(buf,pad->PSX_MEM_FRAME_SIZE)
+	Next i
+
+	out.close()
+
+	Print "ok"
+	Dump(buf,128)
+End Sub
+
+Sub dumpMemFrame(adr AS Word)
+	Dim buf[129] AS Byte,i AS Long,pdata As *PSX_PAD_DATA
+	Dim pad AS *FT232H_PS1_PORT,out AS File
+	pad=new FT232H_PS1_PORT(ft,CS1_PIN,CS2_PIN)
+	pdata=calloc(sizeof(PSX_PAD_DATA)+19)
+	out.openFile(sprintfStr("dump_%04X.bin",adr),GENERIC_WRITE)
+
+	if pad->readMemBlock(0,adr,buf) <> PRMC_OK Then Print "err"
+	out.write(buf,pad->PSX_MEM_FRAME_SIZE)
+
+	out.close()
+
+	Print "ok"
+	Dump(buf,128)
+End Sub
+
+Sub memStatus()
+	Dim p1s AS BytePtr, p2s AS BytePtr
+	Dim pad AS *FT232H_PS1_PORT,out AS File
+	pad=new FT232H_PS1_PORT(ft,CS1_PIN,CS2_PIN)
+	
+	if pad->isMemoryInserted(0) = TRUE Then
+		p1s = "   INSERTED    "
+	Else
+		p1s = " NOT INSERTED  "
+	End If
+	if pad->isMemoryInserted(1) = TRUE Then
+		p2s = "   INSERTED    "
+	Else
+		p2s = " NOT INSERTED  "
+	End If
+	printf(ex"Memory card : \n\t\t\t\tPORT1 [%s]\t\tPORT2 [%s]\n\n",p1s,p2s)
+End Sub
+
+Sub padView()
+	Dim buf[129] AS Byte,i AS Long,pdata As *PSX_PAD_DATA
+	Dim pad AS *FT232H_PS1_PORT,out AS File
+	pad=new FT232H_PS1_PORT(ft,CS1_PIN,CS2_PIN)
+	pdata=calloc(sizeof(PSX_PAD_DATA)+19)
+
+	Do		
+		Locate 0,10
+		memStatus()
+
+		Locate 0,13
+		pad->getPadData(0,pdata)
+		Dump(pdata,sizeof(PSX_PAD_DATA))
+		pad->printPadData(pdata)
+		Print
+
+		Locate 0,20
+		pad->getPadData(1,pdata)
+		Dump(pdata,sizeof(PSX_PAD_DATA))
+		pad->printPadData(pdata)
+		
+		Sleep(10)
+	Loop
+End Sub
