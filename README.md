@@ -15,6 +15,6 @@ PSX memcard reader/writer with FT232H
  * WRITE MEMCARD(128KB)
  
 # SS
-![PAD](https://raw.githubusercontent.com/RGBA-CRT/FT232H-PSX/master/ss/pad.png "PAD")  
-![read](https://raw.githubusercontent.com/RGBA-CRT/FT232H-PSX/master/ss/read.png "read")  
-![write](https://raw.githubusercontent.com/RGBA-CRT/FT232H-PSX/master/ss/write.png "write")  
+![PAD](https://raw.githubusercontent.com/RGBA-CRT/FT232H-PSX/master/SS/pad.png "PAD")  
+![read](https://raw.githubusercontent.com/RGBA-CRT/FT232H-PSX/master/SS/read.png "read")  
+![write](https://raw.githubusercontent.com/RGBA-CRT/FT232H-PSX/master/SS/write.png "write")  
