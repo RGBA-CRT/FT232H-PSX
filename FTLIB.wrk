@@ -1,9 +1,9 @@
 case4
 
+text,"..\FT232HLib.sbp",41,297,8155,8181
 text,"..\MCP23017_Lib.sbp",0,0,0,0
-text,"..\FT232HLib.sbp",0,15,551,551
-text,"PSX.abp",0,0,916,916
-text,"FTLIB.abp",0,0,859,859
+text,"PSX.abp",0,191,5470,5470
+text,"FTLIB.abp",0,0,275,275
 
 0
 1

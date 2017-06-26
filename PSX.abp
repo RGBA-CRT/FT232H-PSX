@@ -7,8 +7,6 @@ Type PSX_PAD_DATA
 	etc[3] AS Byte
 End Type
 
-
-
 Enum PSX_ACCESS_MEMORY_CARD_ERRORS
 	PRMC_OK
 	PRMC_NO_CARD
